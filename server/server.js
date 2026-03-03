@@ -10,9 +10,9 @@ app.use(express.json());
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
-app.post("/chat", async (req, res) => {
+app.post("/api/chat", async (req, res) => {
   try {
-    const { messages } = req.body;
+    const { message } = req.body;
 
     const response = await fetch(GROQ_URL, {
       method: "POST",
@@ -22,56 +22,18 @@ app.post("/chat", async (req, res) => {
       },
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
-        messages,
-        stream: true,
+        messages: [{ role: "user", content: message }],
       }),
     });
 
-    if (!response.ok) {
-      return res.status(response.status).send("Groq API Error");
-    }
+    const data = await response.json();
 
-    res.setHeader("Content-Type", "text/plain");
-    res.setHeader("Transfer-Encoding", "chunked");
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-
-      const lines = buffer.split("\n");
-      buffer = lines.pop();
-
-      for (let line of lines) {
-        line = line.trim();
-
-        if (!line.startsWith("data:")) continue;
-
-        const data = line.replace("data: ", "");
-
-        if (data === "[DONE]") {
-          res.end();
-          return;
-        }
-
-        try {
-          const parsed = JSON.parse(data);
-          const content = parsed.choices?.[0]?.delta?.content;
-
-          if (content) res.write(content);
-        } catch {}
-      }
-    }
-
-    res.end();
+    res.json({
+      reply: data.choices[0].message.content,
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Server Error" });
   }
 });
 
